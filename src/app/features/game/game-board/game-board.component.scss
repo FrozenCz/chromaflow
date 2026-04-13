@@ -1,0 +1,10 @@
+:host {
+  display: block;
+}
+
+.game-board-canvas {
+  display: block;
+  touch-action: none;
+  max-width: 100%;
+  margin: 0 auto;
+}
