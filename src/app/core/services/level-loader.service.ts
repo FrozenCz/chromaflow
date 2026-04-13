@@ -12,6 +12,10 @@ import {
   World,
   WorldMetadata,
 } from '../models';
+import {
+  LevelGeneratorOptions,
+  LevelGeneratorService,
+} from './level-generator.service';
 
 /**
  * Service that loads JSON world definitions from `public/data/levels/<worldId>.json`,
@@ -20,7 +24,22 @@ import {
 @Injectable({ providedIn: 'root' })
 export class LevelLoaderService {
   private readonly http = inject(HttpClient);
+  private readonly generator = inject(LevelGeneratorService);
   private readonly worldCache = new Map<string, Observable<World>>();
+
+  /**
+   * Procedurally generate a guaranteed-solvable level using the
+   * solution-first {@link LevelGeneratorService}. The result is re-validated
+   * with {@link validateLevel} so that any future regression in the generator
+   * surfaces immediately rather than producing an unsolvable level for the
+   * player.
+   */
+  generateLevel(options: LevelGeneratorOptions): Level {
+    const level = this.generator.generate(options);
+    // Re-validate via the same path used for JSON-loaded worlds. This guards
+    // against accidental drift between generator and loader contracts.
+    return this.validateLevel(level, 0);
+  }
 
   /**
    * Load a world by id (cache-first). Returns a shared observable so that
