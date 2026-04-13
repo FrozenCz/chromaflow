@@ -1,0 +1,12 @@
+<header class="app-header">
+  <h1>ChromaFlow</h1>
+  <nav class="app-nav">
+    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Menu</a>
+    <a routerLink="/game" routerLinkActive="active">Game</a>
+    <a routerLink="/campaign" routerLinkActive="active">Campaign</a>
+    <a routerLink="/settings" routerLinkActive="active">Settings</a>
+  </nav>
+</header>
+<main class="app-main">
+  <router-outlet />
+</main>

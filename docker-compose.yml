@@ -1,0 +1,12 @@
+name: chromaflow
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chromaflow:latest
+    container_name: chromaflow-web
+    ports:
+      - "4280:80"
+    restart: unless-stopped
