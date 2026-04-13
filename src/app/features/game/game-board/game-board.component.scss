@@ -5,6 +5,10 @@
 .game-board-canvas {
   display: block;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: crosshair;
   max-width: 100%;
   margin: 0 auto;
 }
