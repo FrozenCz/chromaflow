@@ -11,7 +11,6 @@ import {
   computed,
   effect,
   inject,
-  input,
   signal,
 } from '@angular/core';
 import { COLOR_PALETTE, PathSolution, Position } from '../../../core/models';
@@ -22,6 +21,7 @@ import {
   getCanvasSize,
   gridToPixel,
 } from '../../../core/utils';
+import { PointerController } from './pointer-controller';
 
 const GRID_LINE_COLOR = '#2a2a2a';
 const GRID_BG_COLOR = '#121212';
@@ -32,7 +32,14 @@ const ACTIVE_CELL_LINE_WIDTH = 3;
   selector: 'app-game-board',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<canvas #canvas class="game-board-canvas"></canvas>`,
+  template: `<canvas
+    #canvas
+    class="game-board-canvas"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="onPointerUp($event)"
+    (pointercancel)="onPointerUp($event)"
+  ></canvas>`,
   styleUrl: './game-board.component.scss',
 })
 export class GameBoardComponent implements AfterViewInit, OnDestroy {
@@ -40,7 +47,8 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly activeCell = input<Position | null>(null);
+  protected readonly activeCell = signal<Position | null>(null);
+  private readonly pointerController = new PointerController(this.engine);
 
   @ViewChild('canvas', { static: true })
   private canvasRef!: ElementRef<HTMLCanvasElement>;
@@ -98,6 +106,44 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
     if (typeof window === 'undefined') return;
     this.viewportWidth.set(window.innerWidth);
     this.viewportHeight.set(window.innerHeight);
+  }
+
+  protected onPointerDown(event: PointerEvent): void {
+    const metrics = this.metrics();
+    if (!metrics) return;
+    event.preventDefault();
+    const target = event.target as Element | null;
+    try {
+      target?.setPointerCapture?.(event.pointerId);
+    } catch {
+      /* ignore capture failures */
+    }
+    const canvas = this.canvasRef.nativeElement;
+    const rect = canvas.getBoundingClientRect();
+    const pos = this.pointerController.onDown(event.clientX, event.clientY, rect, metrics);
+    this.activeCell.set(pos);
+  }
+
+  protected onPointerMove(event: PointerEvent): void {
+    const metrics = this.metrics();
+    if (!metrics) return;
+    if (!this.engine.drawing().isDrawing) return;
+    event.preventDefault();
+    const canvas = this.canvasRef.nativeElement;
+    const rect = canvas.getBoundingClientRect();
+    const pos = this.pointerController.onMove(event.clientX, event.clientY, rect, metrics);
+    this.activeCell.set(pos);
+  }
+
+  protected onPointerUp(event: PointerEvent): void {
+    this.pointerController.onUp();
+    this.activeCell.set(null);
+    const target = event.target as Element | null;
+    try {
+      target?.releasePointerCapture?.(event.pointerId);
+    } catch {
+      /* ignore release failures */
+    }
   }
 
   private scheduleDraw(): void {
