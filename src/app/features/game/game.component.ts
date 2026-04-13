@@ -1,22 +1,26 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
-import { ButtonModule } from 'primeng/button';
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
 import { CardModule } from 'primeng/card';
+import { GameEngineService } from '../../core/services/game-engine.service';
+import { DEMO_LEVEL } from '../../data/levels/demo';
+import { GameBoardComponent } from './game-board/game-board.component';
 
 @Component({
   selector: 'app-game',
   standalone: true,
-  imports: [ButtonModule, CardModule],
+  imports: [CardModule, GameBoardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <p-card header="Game" subheader="Placeholder">
-      <p>Moves: {{ moves() }}</p>
-      <p-button label="Move" icon="pi pi-refresh" (onClick)="inc()" />
+    <p-card header="ChromaFlow" subheader="Propoj barevné koncové body">
+      <app-game-board />
     </p-card>
   `,
 })
-export class GameComponent {
-  protected readonly moves = signal(0);
-  protected inc(): void {
-    this.moves.update((v) => v + 1);
+export class GameComponent implements OnInit {
+  private readonly engine = inject(GameEngineService);
+
+  ngOnInit(): void {
+    if (!this.engine.level()) {
+      this.engine.initLevel(DEMO_LEVEL);
+    }
   }
 }
