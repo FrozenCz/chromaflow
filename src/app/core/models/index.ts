@@ -11,3 +11,4 @@ export type { GameState } from './game-state';
 export type { DrawingState } from './drawing-state';
 export type { ColorPaletteEntry } from './color-palette';
 export { COLOR_PALETTE } from './color-palette';
+export type { World, WorldMetadata } from './world';
