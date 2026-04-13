@@ -1,0 +1,18 @@
+@layer app-styles, primeng;
+
+@import "primeicons/primeicons.css";
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  background: var(--p-surface-950, #09090b);
+  color: var(--p-text-color, #e5e7eb);
+  min-height: 100vh;
+}
