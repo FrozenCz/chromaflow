@@ -8,6 +8,7 @@ import {
   FlowColor,
   Level,
   PathSolution,
+  PortalPair,
   Position,
   World,
   WorldMetadata,
@@ -183,6 +184,7 @@ export class LevelLoaderService {
     const walls = this.validateWalls(raw['walls'], id, width, height);
     const endpoints = this.validateEndpoints(raw['endpoints'], id, width, height, walls);
     const solution = this.validateSolution(raw['solution'], id, width, height, walls, endpoints);
+    const portals = this.validatePortals(raw['portals'], id, width, height, walls, endpoints);
 
     const par = raw['par'];
     const expectedPar = solution.length;
@@ -198,12 +200,80 @@ export class LevelLoaderService {
       width,
       height,
       endpoints,
-      portals: [],
+      portals,
       colorChangers: [],
       walls,
       solution,
       par,
     };
+  }
+
+  private validatePortals(
+    raw: unknown,
+    levelId: string,
+    width: number,
+    height: number,
+    walls: Position[],
+    endpoints: Endpoint[],
+  ): PortalPair[] {
+    if (raw === undefined || raw === null) {
+      return [];
+    }
+    if (!Array.isArray(raw)) {
+      throw new Error(`Level "${levelId}".portals must be an array when provided.`);
+    }
+    const portals: PortalPair[] = [];
+    const usedCells = new Set<string>();
+    const usedIds = new Set<string>();
+    raw.forEach((entry, i) => {
+      if (!isRecord(entry)) {
+        throw new Error(`Level "${levelId}".portals[${i}] must be an object.`);
+      }
+      const id = entry['id'];
+      if (typeof id !== 'string' || id.length === 0) {
+        throw new Error(`Level "${levelId}".portals[${i}].id must be a non-empty string.`);
+      }
+      if (usedIds.has(id)) {
+        throw new Error(`Level "${levelId}".portals[${i}].id "${id}" is duplicated.`);
+      }
+      usedIds.add(id);
+      const a = toPosition(entry['a'], `Level "${levelId}".portals[${i}].a`);
+      const b = toPosition(entry['b'], `Level "${levelId}".portals[${i}].b`);
+      for (const [label, pos] of [
+        ['a', a],
+        ['b', b],
+      ] as const) {
+        if (!inBounds(pos, width, height)) {
+          throw new Error(
+            `Level "${levelId}".portals[${i}].${label} out of bounds (${pos.row},${pos.col}).`,
+          );
+        }
+        if (walls.some((w) => samePos(w, pos))) {
+          throw new Error(
+            `Level "${levelId}".portals[${i}].${label} overlaps wall at (${pos.row},${pos.col}).`,
+          );
+        }
+        if (endpoints.some((e) => samePos(e.position, pos))) {
+          throw new Error(
+            `Level "${levelId}".portals[${i}].${label} overlaps endpoint at (${pos.row},${pos.col}).`,
+          );
+        }
+        const k = `${pos.row},${pos.col}`;
+        if (usedCells.has(k)) {
+          throw new Error(
+            `Level "${levelId}".portals cells overlap at (${pos.row},${pos.col}).`,
+          );
+        }
+        usedCells.add(k);
+      }
+      if (samePos(a, b)) {
+        throw new Error(
+          `Level "${levelId}".portals[${i}] a and b must be at different positions.`,
+        );
+      }
+      portals.push({ id, a, b });
+    });
+    return portals;
   }
 
   private validateWalls(

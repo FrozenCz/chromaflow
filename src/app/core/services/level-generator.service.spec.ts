@@ -92,6 +92,55 @@ describe('LevelGeneratorService', () => {
     }
   });
 
+  it('places a portal pair on 5x5+ quick-game sized boards', () => {
+    const level = generator.generate({
+      id: 'portal-test',
+      width: 5,
+      height: 5,
+      numColors: 3,
+      seed: 42,
+    });
+    expect(level.portals.length).toBe(1);
+    const portal = level.portals[0];
+    expect(portal.a).not.toEqual(portal.b);
+    // Portals must not coincide with endpoints.
+    const epKeys = new Set(level.endpoints.map((e) => key(e.position)));
+    expect(epKeys.has(key(portal.a))).toBe(false);
+    expect(epKeys.has(key(portal.b))).toBe(false);
+    // Portals must be in-bounds.
+    for (const p of [portal.a, portal.b]) {
+      expect(p.row).toBeGreaterThanOrEqual(0);
+      expect(p.row).toBeLessThan(level.height);
+      expect(p.col).toBeGreaterThanOrEqual(0);
+      expect(p.col).toBeLessThan(level.width);
+    }
+    // Portals should not be trivially 4-adjacent (otherwise teleport ≡ step).
+    const dr = Math.abs(portal.a.row - portal.b.row);
+    const dc = Math.abs(portal.a.col - portal.b.col);
+    expect(dr + dc).toBeGreaterThanOrEqual(2);
+    // Solution coverage remains intact regardless of portal placement.
+    assertValidLevel(level);
+  });
+
+  it('skips portal placement on tiny boards below the minimum dimension', () => {
+    const level = generator.generate({
+      id: 'tiny',
+      width: 4,
+      height: 4,
+      numColors: 2,
+      seed: 123,
+    });
+    expect(level.portals).toEqual([]);
+    assertValidLevel(level);
+  });
+
+  it('produces portals deterministically for the same seed', () => {
+    const a = generator.generate({ id: 'det', width: 6, height: 6, numColors: 3, seed: 7 });
+    const b = generator.generate({ id: 'det', width: 6, height: 6, numColors: 3, seed: 7 });
+    expect(a.portals).toEqual(b.portals);
+    expect(a.portals.length).toBe(1);
+  });
+
   it('rejects invalid inputs', () => {
     expect(() => generator.generate({ id: 'x', width: 0, height: 5, numColors: 2, seed: 1 })).toThrow();
     expect(() => generator.generate({ id: 'x', width: 5, height: 5, numColors: 0, seed: 1 })).toThrow();
@@ -128,5 +177,20 @@ describe('LevelLoaderService.generateLevel', () => {
     assertValidLevel(lvl);
     expect(lvl.id).toBe('gen-1');
     expect(lvl.name).toBe('Generated 1');
+  });
+
+  it('preserves generator-produced portals through re-validation', () => {
+    const lvl = loader.generateLevel({
+      id: 'gen-portal',
+      name: 'Generated Portal',
+      width: 5,
+      height: 5,
+      numColors: 3,
+      seed: 42,
+    });
+    expect(lvl.portals.length).toBe(1);
+    const epKeys = new Set(lvl.endpoints.map((e) => key(e.position)));
+    expect(epKeys.has(key(lvl.portals[0].a))).toBe(false);
+    expect(epKeys.has(key(lvl.portals[0].b))).toBe(false);
   });
 });

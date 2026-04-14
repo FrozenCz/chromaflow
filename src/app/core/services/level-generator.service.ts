@@ -4,8 +4,16 @@ import {
   FLOW_COLORS,
   Level,
   PathSolution,
+  PortalPair,
   Position,
 } from '../models';
+
+/**
+ * Minimum grid dimension (width AND height) required for the generator to
+ * place a portal pair. Smaller boards are typically fully covered by short
+ * solution segments and would not benefit from optional portal shortcuts.
+ */
+const PORTAL_MIN_DIMENSION = 5;
 
 /** Options accepted by {@link LevelGeneratorService.generate}. */
 export interface LevelGeneratorOptions {
@@ -88,13 +96,22 @@ export class LevelGeneratorService {
       endpoints.push({ color, position: clonePos(segment[segment.length - 1]) });
     }
 
+    // Step 4: optionally place a portal pair on two non-endpoint cells so the
+    // "Quick Game" player can actually encounter portals in the generated
+    // levels. Portals are deliberately placed on cells that are already part
+    // of a solution path — the reference solution walks those cells with
+    // plain adjacency (the engine only auto-teleports on non-adjacent moves),
+    // so the level remains solvable without ever using the portal. Using the
+    // portal is therefore purely optional.
+    const portals = pickPortalPair(width, height, endpoints, rng, id);
+
     return {
       id,
       name: options.name ?? id,
       width,
       height,
       endpoints,
-      portals: [],
+      portals,
       colorChangers: [],
       walls: [],
       solution,
@@ -192,4 +209,69 @@ function pickSplitPoints(total: number, numColors: number, rng: () => number): n
 
 function clonePos(p: Position): Position {
   return { row: p.row, col: p.col };
+}
+
+/**
+ * Deterministically pick a single portal pair on a generated level.
+ *
+ * Rules:
+ * - Both grid dimensions must be >= {@link PORTAL_MIN_DIMENSION}; smaller
+ *   boards skip portals entirely and return an empty array.
+ * - Neither portal cell may coincide with a level endpoint.
+ * - The two portal cells must be at different positions AND must not be
+ *   4-adjacent to each other, otherwise the portal would be indistinguishable
+ *   from a plain step.
+ *
+ * The picker iterates the RNG up to a small cap; if no valid pair is found
+ * it falls back to an empty array so that generation never fails due to
+ * optional portal placement.
+ */
+function pickPortalPair(
+  width: number,
+  height: number,
+  endpoints: Endpoint[],
+  rng: () => number,
+  levelId: string,
+): PortalPair[] {
+  if (width < PORTAL_MIN_DIMENSION || height < PORTAL_MIN_DIMENSION) {
+    return [];
+  }
+  const endpointKeys = new Set(endpoints.map((e) => `${e.position.row},${e.position.col}`));
+  const candidates: Position[] = [];
+  for (let r = 0; r < height; r++) {
+    for (let c = 0; c < width; c++) {
+      if (!endpointKeys.has(`${r},${c}`)) {
+        candidates.push({ row: r, col: c });
+      }
+    }
+  }
+  if (candidates.length < 2) {
+    return [];
+  }
+
+  // Deterministic Fisher-Yates on a copy; take the first valid pair whose
+  // cells are not 4-adjacent. Bounded scan guarantees termination.
+  const shuffled = candidates.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  for (let i = 0; i < shuffled.length; i++) {
+    for (let j = i + 1; j < shuffled.length; j++) {
+      const a = shuffled[i];
+      const b = shuffled[j];
+      const manhattan = Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
+      if (manhattan >= 2) {
+        return [
+          {
+            id: `${levelId}-portal-1`,
+            a: clonePos(a),
+            b: clonePos(b),
+          },
+        ];
+      }
+    }
+  }
+  return [];
 }
