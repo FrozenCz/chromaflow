@@ -12,3 +12,12 @@ export type { DrawingState } from './drawing-state';
 export type { ColorPaletteEntry } from './color-palette';
 export { COLOR_PALETTE } from './color-palette';
 export type { World, WorldMetadata } from './world';
+export { StorageKey } from './storage-types';
+export type {
+  CampaignProgress,
+  LevelProgress,
+  GameSettings,
+  DailyStreak,
+  OverallStats,
+  StorageValueMap,
+} from './storage-types';
