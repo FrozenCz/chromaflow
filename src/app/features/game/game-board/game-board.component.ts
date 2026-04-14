@@ -26,6 +26,7 @@ import { PointerController } from './pointer-controller';
 const GRID_LINE_COLOR = '#2a2a2a';
 const GRID_BG_COLOR = '#121212';
 const CELL_BG_COLOR = '#181818';
+const WALL_CELL_COLOR = '#3a3a3a';
 const ACTIVE_CELL_LINE_WIDTH = 3;
 
 @Component({
@@ -178,6 +179,7 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
     ctx.fillRect(0, 0, width, height);
 
     this.drawGrid(ctx, metrics);
+    this.drawWalls(ctx, metrics);
     this.drawPaths(ctx, metrics);
     this.drawEndpoints(ctx, metrics);
     this.drawActiveCell(ctx, metrics);
@@ -212,6 +214,21 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
       ctx.lineTo(padding + width * cellSize, y);
     }
     ctx.stroke();
+  }
+
+  private drawWalls(ctx: CanvasRenderingContext2D, metrics: GridMetrics): void {
+    const level = this.engine.level();
+    if (!level || !level.walls || level.walls.length === 0) return;
+    const { cellSize, padding } = metrics;
+    ctx.fillStyle = WALL_CELL_COLOR;
+    for (const wall of level.walls) {
+      ctx.fillRect(
+        padding + wall.col * cellSize + 1,
+        padding + wall.row * cellSize + 1,
+        cellSize - 2,
+        cellSize - 2,
+      );
+    }
   }
 
   private drawPaths(ctx: CanvasRenderingContext2D, metrics: GridMetrics): void {

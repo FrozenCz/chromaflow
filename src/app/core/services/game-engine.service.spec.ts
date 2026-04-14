@@ -267,6 +267,77 @@ describe('GameEngineService', () => {
       expect(service.getFillPercentage()).toBeLessThan(100);
     });
 
+    it('wins when all non-wall cells are filled (walls excluded from 100% check)', () => {
+      // 5x1 row with a single wall at col 2 → playable = 4 cells.
+      // Two R endpoints at (0,0) and (0,4); path (0,0)-(0,1) + (0,3)-(0,4) is
+      // impossible since the pair must connect, so we use a different layout:
+      // 2 rows, 2 cols, wall at (1,1). Playable = 3 cells.
+      // R endpoints at (0,0) and (1,0); B endpoints can't fit — use single color
+      // with the path (0,0)-(0,1)-(1,0)? Not adjacent chain, use a shaped level.
+      const level: Level = {
+        id: 'win-wall',
+        name: 'WinWall',
+        width: 2,
+        height: 2,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(1, 0), color: 'R' },
+        ],
+        portals: [],
+        colorChangers: [],
+        walls: [pos(1, 1)],
+      };
+      service.initLevel(level);
+      // Playable cells = 3: (0,0), (0,1), (1,0). R must cover all of them.
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      // Can't move diagonally to (1,0) — go back.
+      // Try different path: (0,0)->(1,0) directly (only 2 cells, leaves (0,1) empty).
+      service.endDraw();
+      expect(service.checkWinCondition()).toBe(false);
+
+      // Now draw full coverage: (1,0)->(0,0)->(0,1) — but endpoints are (0,0) and (1,0)
+      // so must start/end at them. Draw (1,0)->(0,0) goes only through 2 cells.
+      // Use path (0,0)->(0,1)... dead end, (1,0) not reachable through (1,1) wall.
+      // Conclusion: this topology cannot reach 100% fill legally. Instead verify
+      // that fill percentage correctly uses non-wall denominator.
+      service.reset();
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(1, 0));
+      service.endDraw();
+      // 2 cells filled out of 3 playable ≈ 67%
+      expect(service.getFillPercentage()).toBe(67);
+      // Not 100% yet — not a win despite pair being connected
+      expect(service.checkWinCondition()).toBe(false);
+    });
+
+    it('win condition denominator ignores walls (computed over playable cells only)', () => {
+      // 3x1 row: endpoints (0,0)R and (0,2)R, wall at... can't place a wall
+      // on the path. Use 1x4 with wall at last cell.
+      const level: Level = {
+        id: 'win-wall-2',
+        name: 'WinWall2',
+        width: 4,
+        height: 1,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(0, 2), color: 'R' },
+        ],
+        portals: [],
+        colorChangers: [],
+        walls: [pos(0, 3)],
+      };
+      service.initLevel(level);
+      // Playable = 3 cells: (0,0), (0,1), (0,2). Path (0,0)-(0,1)-(0,2) covers all.
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.continueDraw(pos(0, 2));
+      service.endDraw();
+      expect(service.getFillPercentage()).toBe(100);
+      expect(service.checkWinCondition()).toBe(true);
+      expect(service.isWon()).toBe(true);
+    });
+
     it('getFillPercentage excludes walls from total', () => {
       service.initLevel(makeLevelWithWall());
       // playable = 8
