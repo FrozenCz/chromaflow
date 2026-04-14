@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, map, shareReplay, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import {
+  ColorChanger,
   Endpoint,
   FLOW_COLORS,
   FlowColor,
@@ -185,6 +186,15 @@ export class LevelLoaderService {
     const endpoints = this.validateEndpoints(raw['endpoints'], id, width, height, walls);
     const solution = this.validateSolution(raw['solution'], id, width, height, walls, endpoints);
     const portals = this.validatePortals(raw['portals'], id, width, height, walls, endpoints);
+    const colorChangers = this.validateColorChangers(
+      raw['colorChangers'],
+      id,
+      width,
+      height,
+      walls,
+      endpoints,
+      portals,
+    );
 
     const par = raw['par'];
     const expectedPar = solution.length;
@@ -201,7 +211,7 @@ export class LevelLoaderService {
       height,
       endpoints,
       portals,
-      colorChangers: [],
+      colorChangers,
       walls,
       solution,
       par,
@@ -274,6 +284,84 @@ export class LevelLoaderService {
       portals.push({ id, a, b });
     });
     return portals;
+  }
+
+  private validateColorChangers(
+    raw: unknown,
+    levelId: string,
+    width: number,
+    height: number,
+    walls: Position[],
+    endpoints: Endpoint[],
+    portals: PortalPair[],
+  ): ColorChanger[] {
+    if (raw === undefined || raw === null) {
+      return [];
+    }
+    if (!Array.isArray(raw)) {
+      throw new Error(
+        `Level "${levelId}".colorChangers must be an array when provided.`,
+      );
+    }
+    const changers: ColorChanger[] = [];
+    const usedCells = new Set<string>();
+    raw.forEach((entry, i) => {
+      if (!isRecord(entry)) {
+        throw new Error(`Level "${levelId}".colorChangers[${i}] must be an object.`);
+      }
+      const position = toPosition(
+        entry['position'],
+        `Level "${levelId}".colorChangers[${i}].position`,
+      );
+      if (!inBounds(position, width, height)) {
+        throw new Error(
+          `Level "${levelId}".colorChangers[${i}] out of bounds (${position.row},${position.col}).`,
+        );
+      }
+      const from = entry['from'];
+      const to = entry['to'];
+      if (!isFlowColor(from)) {
+        throw new Error(
+          `Level "${levelId}".colorChangers[${i}].from must be one of ${FLOW_COLORS.join(',')}.`,
+        );
+      }
+      if (!isFlowColor(to)) {
+        throw new Error(
+          `Level "${levelId}".colorChangers[${i}].to must be one of ${FLOW_COLORS.join(',')}.`,
+        );
+      }
+      if (from === to) {
+        throw new Error(
+          `Level "${levelId}".colorChangers[${i}] from and to must differ (both "${from}").`,
+        );
+      }
+      if (walls.some((w) => samePos(w, position))) {
+        throw new Error(
+          `Level "${levelId}".colorChangers[${i}] overlaps wall at (${position.row},${position.col}).`,
+        );
+      }
+      if (endpoints.some((e) => samePos(e.position, position))) {
+        throw new Error(
+          `Level "${levelId}".colorChangers[${i}] overlaps endpoint at (${position.row},${position.col}).`,
+        );
+      }
+      for (const pair of portals) {
+        if (samePos(pair.a, position) || samePos(pair.b, position)) {
+          throw new Error(
+            `Level "${levelId}".colorChangers[${i}] overlaps portal at (${position.row},${position.col}).`,
+          );
+        }
+      }
+      const k = `${position.row},${position.col}`;
+      if (usedCells.has(k)) {
+        throw new Error(
+          `Level "${levelId}".colorChangers duplicate position at (${position.row},${position.col}).`,
+        );
+      }
+      usedCells.add(k);
+      changers.push({ position, from, to });
+    });
+    return changers;
   }
 
   private validateWalls(

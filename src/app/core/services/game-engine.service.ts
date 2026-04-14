@@ -7,6 +7,7 @@ import {
   PathSolution,
   Position,
 } from '../models';
+import { pathEndColor } from '../utils/color-changer';
 
 interface EngineState {
   level: Level | null;
@@ -33,6 +34,7 @@ interface HistorySnapshot {
 const EMPTY_DRAWING: DrawingState = {
   isDrawing: false,
   currentColor: null,
+  activeColor: null,
   currentPath: [],
   startEndpoint: null,
 };
@@ -190,12 +192,16 @@ export class GameEngineService {
     if (endpoint) {
       // Remove any existing path of that color (restart)
       const paths = s.paths.filter((p) => p.color !== endpoint.color);
+      // The start cell itself may be a color changer in exotic setups — keep
+      // the endpoint color as the starting color and let pathEndColor handle
+      // transforms as the user draws through subsequent cells.
       this.state.set({
         ...s,
         paths,
         drawing: {
           isDrawing: true,
           currentColor: endpoint.color,
+          activeColor: endpoint.color,
           currentPath: [clonePos(pos)],
           startEndpoint: endpoint,
         },
@@ -214,12 +220,14 @@ export class GameEngineService {
           (e) => e.color === existing.color && samePos(e.position, existing.path[0]),
         ) ?? null;
       const paths = s.paths.filter((p) => p.color !== existing.color);
+      const active = pathEndColor(existing.path, level, existing.color);
       this.state.set({
         ...s,
         paths,
         drawing: {
           isDrawing: true,
           currentColor: existing.color,
+          activeColor: active,
           currentPath: existing.path.map(clonePos),
           startEndpoint,
         },
@@ -263,9 +271,10 @@ export class GameEngineService {
     // injected on the forward pass.
     if (path.length >= 2 && samePos(path[path.length - 2], pos)) {
       const newPath = path.slice(0, -1);
+      const active = pathEndColor(newPath, level, drawing.currentColor);
       this.state.set({
         ...s,
-        drawing: { ...drawing, currentPath: newPath },
+        drawing: { ...drawing, currentPath: newPath, activeColor: active },
       });
       return;
     }
@@ -275,9 +284,10 @@ export class GameEngineService {
       const partnerOfPenult = this.checkPortalAdjacency(penultimate, level);
       if (partnerOfPenult && samePos(partnerOfPenult, tail)) {
         const newPath = path.slice(0, -2);
+        const active = pathEndColor(newPath, level, drawing.currentColor);
         this.state.set({
           ...s,
-          drawing: { ...drawing, currentPath: newPath },
+          drawing: { ...drawing, currentPath: newPath, activeColor: active },
         });
         return;
       }
@@ -304,7 +314,7 @@ export class GameEngineService {
         const partnerEndpoint = level.endpoints.find((e) =>
           samePos(e.position, partner),
         );
-        if (partnerEndpoint && partnerEndpoint.color !== drawing.currentColor) {
+        if (partnerEndpoint && partnerEndpoint.color !== drawing.activeColor) {
           return;
         }
         workingPath = [...path, clonePos(partner)];
@@ -312,7 +322,8 @@ export class GameEngineService {
       }
     }
 
-    if (!this.isValidMove(workingLast, pos, drawing.currentColor)) return;
+    const activeForMove = drawing.activeColor ?? drawing.currentColor;
+    if (!this.isValidMove(workingLast, pos, activeForMove)) return;
 
     // Split: if pos belongs to another color's path, trim that path
     let newPaths = s.paths;
@@ -353,7 +364,10 @@ export class GameEngineService {
       // still allow the step onto the portal cell (the user can backtrack).
       // If it belongs to the current color we MUST still allow it, as it can
       // legitimately close the flow.
-      if (!partnerEndpoint || partnerEndpoint.color === drawing.currentColor) {
+      // Compare against the *active* color (post-transform) so a B-tinted
+      // flow can close a B endpoint that sits behind a portal.
+      const activeForPortal = drawing.activeColor ?? drawing.currentColor;
+      if (!partnerEndpoint || partnerEndpoint.color === activeForPortal) {
         // Don't trample another color's active path on the partner cell.
         const partnerCrossing = newPaths.find((p) =>
           p.path.some((pp) => samePos(pp, partnerAfterStep)),
@@ -365,10 +379,11 @@ export class GameEngineService {
       }
     }
 
+    const nextActive = pathEndColor(newPath, level, drawing.currentColor);
     this.state.set({
       ...s,
       paths: newPaths,
-      drawing: { ...drawing, currentPath: newPath },
+      drawing: { ...drawing, currentPath: newPath, activeColor: nextActive },
       teleportLockSource: nextTeleportLock,
     });
   }
@@ -521,23 +536,38 @@ export class GameEngineService {
     if (solution.path.length < 2) return false;
     const first = solution.path[0];
     const last = solution.path[solution.path.length - 1];
-    const endpoints = level.endpoints.filter((e) => e.color === solution.color);
-    if (endpoints.length < 2) return false;
-    const matchFirst = endpoints.some((e) => samePos(e.position, first));
-    const matchLast = endpoints.some((e) => samePos(e.position, last));
-    return matchFirst && matchLast;
+    // After color changers, the tail may be a different color than the start.
+    const endColor = pathEndColor(solution.path, level, solution.color);
+    const startEndpoints = level.endpoints.filter((e) => e.color === solution.color);
+    const endEndpoints = level.endpoints.filter((e) => e.color === endColor);
+    if (startEndpoints.length < 2 && solution.color === endColor) return false;
+    const matchFirst = startEndpoints.some((e) => samePos(e.position, first));
+    const matchLast = endEndpoints.some((e) => samePos(e.position, last));
+    if (!matchFirst || !matchLast) return false;
+    // When the path starts and ends on the same color, make sure first and
+    // last are the two *distinct* endpoints of that color (no degenerate
+    // self-loops on a single endpoint).
+    if (solution.color === endColor && samePos(first, last)) return false;
+    return true;
   }
 
   private checkWinFor(level: Level, paths: PathSolution[]): boolean {
-    // Group endpoints by color
-    const colors = new Set<FlowColor>(level.endpoints.map((e) => e.color));
-    for (const color of colors) {
-      const endpoints = level.endpoints.filter((e) => e.color === color);
-      if (endpoints.length < 2) return false;
-      const solution = paths.find((p) => p.color === color);
-      if (!solution) return false;
-      if (!this.isPathCompleted(level, solution)) return false;
+    // Endpoint-cover algorithm: every endpoint must be claimed as either the
+    // first or last cell of a completed path. A path starting from a red
+    // endpoint and ending on a blue endpoint (via a R→B color changer)
+    // legitimately covers one red and one blue endpoint.
+    const uncovered = new Set<string>(
+      level.endpoints.map((e) => `${e.position.row},${e.position.col}`),
+    );
+    for (const p of paths) {
+      if (!this.isPathCompleted(level, p)) continue;
+      const first = p.path[0];
+      const last = p.path[p.path.length - 1];
+      uncovered.delete(`${first.row},${first.col}`);
+      uncovered.delete(`${last.row},${last.col}`);
     }
+    if (uncovered.size > 0) return false;
+
     // 100% fill
     const total = this.totalPlayableCells(level);
     if (total === 0) return false;

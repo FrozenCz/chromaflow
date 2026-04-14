@@ -177,6 +177,256 @@ describe('LevelLoaderService', () => {
     }
   });
 
+  describe('colorChangers validation', () => {
+    interface RawChanger {
+      position: RawPos;
+      from: string;
+      to: string;
+    }
+    function worldWithChanger(cc: RawChanger): RawWorld & {
+      levels: (RawLevel & { colorChangers?: RawChanger[] })[];
+    } {
+      const w = buildValidWorld() as RawWorld & {
+        levels: (RawLevel & { colorChangers?: RawChanger[] })[];
+      };
+      // Enlarge level to 3x3 with R/B endpoints so color changer has room.
+      w.levels[0] = {
+        ...w.levels[0],
+        width: 3,
+        height: 3,
+        endpoints: [
+          { color: 'R', position: { row: 0, col: 0 } },
+          { color: 'R', position: { row: 0, col: 2 } },
+          { color: 'B', position: { row: 2, col: 0 } },
+          { color: 'B', position: { row: 2, col: 2 } },
+        ],
+        par: 2,
+        solution: [
+          {
+            color: 'R',
+            path: [
+              { row: 0, col: 0 },
+              { row: 0, col: 1 },
+              { row: 0, col: 2 },
+              { row: 1, col: 2 },
+              { row: 1, col: 1 },
+            ],
+          },
+          {
+            color: 'B',
+            path: [
+              { row: 2, col: 0 },
+              { row: 1, col: 0 },
+              { row: 2, col: 1 },
+              { row: 2, col: 2 },
+            ],
+          },
+        ],
+        colorChangers: [cc],
+      };
+      // Fix: solution must be a valid cover; rebuild simpler level instead.
+      w.levels[0] = {
+        id: 'w1-l1',
+        name: 'CC',
+        width: 2,
+        height: 2,
+        endpoints: [
+          { color: 'R', position: { row: 0, col: 0 } },
+          { color: 'R', position: { row: 1, col: 0 } },
+          { color: 'B', position: { row: 0, col: 1 } },
+          { color: 'B', position: { row: 1, col: 1 } },
+        ],
+        par: 2,
+        solution: [
+          {
+            color: 'R',
+            path: [
+              { row: 0, col: 0 },
+              { row: 1, col: 0 },
+            ],
+          },
+          {
+            color: 'B',
+            path: [
+              { row: 0, col: 1 },
+              { row: 1, col: 1 },
+            ],
+          },
+        ],
+        colorChangers: [cc],
+      };
+      return w;
+    }
+
+    it('loads a valid color changer', () => {
+      // 1x3: R @ (0,0), B @ (0,2), changer at (0,1). Solution covers all 3
+      // cells as a single R color segment (path endpoints are R's pair —
+      // wait, R only has one endpoint here). Use two R endpoints with a
+      // single-color R solution that incidentally steps through the changer
+      // cell.
+      const w: RawWorld & {
+        levels: (RawLevel & { colorChangers?: RawChanger[] })[];
+      } = {
+        metadata: { id: 'world1', name: 'W1', order: 1 },
+        levels: [
+          {
+            id: 'w1-l1',
+            name: 'CC',
+            width: 3,
+            height: 1,
+            endpoints: [
+              { color: 'R', position: { row: 0, col: 0 } },
+              { color: 'R', position: { row: 0, col: 2 } },
+            ],
+            par: 1,
+            solution: [
+              {
+                color: 'R',
+                path: [
+                  { row: 0, col: 0 },
+                  { row: 0, col: 1 },
+                  { row: 0, col: 2 },
+                ],
+              },
+            ],
+            colorChangers: [{ position: { row: 0, col: 1 }, from: 'R', to: 'B' }],
+          },
+        ],
+      };
+      const parsed = service.validateWorld(w);
+      expect(parsed.levels[0].colorChangers).toHaveLength(1);
+      expect(parsed.levels[0].colorChangers[0].from).toBe('R');
+      expect(parsed.levels[0].colorChangers[0].to).toBe('B');
+    });
+
+    it('rejects a color changer where from === to', () => {
+      const w = worldWithChanger({
+        position: { row: 0, col: 0 },
+        from: 'R',
+        to: 'R',
+      });
+      expect(() => service.validateWorld(w)).toThrow(/from and to must differ/);
+    });
+
+    it('rejects a color changer out of bounds', () => {
+      const w = worldWithChanger({
+        position: { row: 9, col: 9 },
+        from: 'R',
+        to: 'B',
+      });
+      expect(() => service.validateWorld(w)).toThrow(/out of bounds/);
+    });
+
+    it('rejects a color changer overlapping an endpoint', () => {
+      const w = worldWithChanger({
+        position: { row: 0, col: 0 },
+        from: 'R',
+        to: 'B',
+      });
+      expect(() => service.validateWorld(w)).toThrow(/overlaps endpoint/);
+    });
+
+    it('rejects a color changer overlapping a wall', () => {
+      const w = worldWithChanger({
+        position: { row: 0, col: 0 },
+        from: 'R',
+        to: 'B',
+      });
+      // Remove conflicting endpoint first, add wall at that position.
+      w.levels[0] = {
+        id: 'w1-l1',
+        name: 'CC-wall',
+        width: 3,
+        height: 1,
+        endpoints: [
+          { color: 'R', position: { row: 0, col: 0 } },
+          { color: 'R', position: { row: 0, col: 2 } },
+        ],
+        par: 1,
+        solution: [
+          {
+            color: 'R',
+            path: [
+              { row: 0, col: 0 },
+              { row: 0, col: 2 },
+            ],
+          },
+        ],
+        walls: [{ row: 0, col: 1 }],
+        colorChangers: [{ position: { row: 0, col: 1 }, from: 'R', to: 'B' }],
+      } as RawLevel & { colorChangers?: RawChanger[] };
+      // Note: solution has a non-adjacent step but we expect wall overlap error
+      // to fire before solution validation (walls validated first, then
+      // endpoints, then solution, then portals, then colorChangers). Actually
+      // solution runs before colorChangers, so this would throw non-adjacent
+      // first. Re-shape: make solution adjacent by not using wall position.
+      w.levels[0] = {
+        id: 'w1-l1',
+        name: 'CC-wall',
+        width: 2,
+        height: 2,
+        endpoints: [
+          { color: 'R', position: { row: 0, col: 0 } },
+          { color: 'R', position: { row: 1, col: 1 } },
+        ],
+        par: 1,
+        solution: [
+          {
+            color: 'R',
+            path: [
+              { row: 0, col: 0 },
+              { row: 1, col: 0 },
+              { row: 1, col: 1 },
+            ],
+          },
+        ],
+        walls: [{ row: 0, col: 1 }],
+        colorChangers: [{ position: { row: 0, col: 1 }, from: 'R', to: 'B' }],
+      } as RawLevel & { colorChangers?: RawChanger[] };
+      expect(() => service.validateWorld(w)).toThrow(/overlaps wall/);
+    });
+
+    it('rejects a color changer overlapping a portal', () => {
+      const w: RawWorld & {
+        levels: (RawLevel & {
+          colorChangers?: RawChanger[];
+          portals?: { id: string; a: RawPos; b: RawPos }[];
+        })[];
+      } = {
+        metadata: { id: 'world1', name: 'W1', order: 1 },
+        levels: [
+          {
+            id: 'w1-l1',
+            name: 'CC-portal',
+            width: 4,
+            height: 1,
+            endpoints: [
+              { color: 'R', position: { row: 0, col: 0 } },
+              { color: 'R', position: { row: 0, col: 3 } },
+            ],
+            par: 1,
+            solution: [
+              {
+                color: 'R',
+                path: [
+                  { row: 0, col: 0 },
+                  { row: 0, col: 1 },
+                  { row: 0, col: 2 },
+                  { row: 0, col: 3 },
+                ],
+              },
+            ],
+            portals: [
+              { id: 'p1', a: { row: 0, col: 1 }, b: { row: 0, col: 2 } },
+            ],
+            colorChangers: [{ position: { row: 0, col: 1 }, from: 'R', to: 'B' }],
+          },
+        ],
+      };
+      expect(() => service.validateWorld(w)).toThrow(/overlaps portal/);
+    });
+  });
+
   it('generateQuickGame produces a 5x5 / 3-color level with quick- id prefix', () => {
     const level = service.generateQuickGame();
     expect(level.width).toBe(5);

@@ -563,6 +563,159 @@ describe('GameEngineService', () => {
     });
   });
 
+  describe('color changers', () => {
+    it('wins when a path enters via R endpoint, passes through an R→B changer, and exits at a B endpoint (full fill)', () => {
+      // 1x3: R @ (0,0), B @ (0,2), R→B at (0,1). Path (0,0)-(0,1)-(0,2).
+      const level: Level = {
+        id: 'cc-basic',
+        name: 'CCBasic',
+        width: 3,
+        height: 1,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(0, 2), color: 'B' },
+        ],
+        portals: [],
+        colorChangers: [{ position: pos(0, 1), from: 'R', to: 'B' }],
+      };
+      service.initLevel(level);
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.continueDraw(pos(0, 2));
+      service.endDraw();
+      expect(service.checkWinCondition()).toBe(true);
+      expect(service.isWon()).toBe(true);
+    });
+
+    it('does not win when path bypasses the color changer (foreign-color endpoint unreachable)', () => {
+      // 2x3: R @ (0,0), B @ (0,2), R→B at (0,1). Path tries (0,0)-(1,0)-(1,1)-(1,2)-(0,2) — but (0,2) is B and path is still R, so invalid.
+      const level: Level = {
+        id: 'cc-bypass',
+        name: 'CCBypass',
+        width: 3,
+        height: 2,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(0, 2), color: 'B' },
+        ],
+        portals: [],
+        colorChangers: [{ position: pos(0, 1), from: 'R', to: 'B' }],
+      };
+      service.initLevel(level);
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(1, 0));
+      service.continueDraw(pos(1, 1));
+      service.continueDraw(pos(1, 2));
+      // Attempt to enter the B endpoint while still R — should be rejected.
+      service.continueDraw(pos(0, 2));
+      const path = service.drawing().currentPath;
+      expect(path).toEqual([pos(0, 0), pos(1, 0), pos(1, 1), pos(1, 2)]);
+      service.endDraw();
+      expect(service.checkWinCondition()).toBe(false);
+    });
+
+    it('supports multi-hop: R → B → G with two color changers from R endpoint to G endpoint', () => {
+      // 1x4: R @ (0,0), G @ (0,3), R→B at (0,1), B→G at (0,2).
+      const level: Level = {
+        id: 'cc-multi',
+        name: 'CCMulti',
+        width: 4,
+        height: 1,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(0, 3), color: 'G' },
+        ],
+        portals: [],
+        colorChangers: [
+          { position: pos(0, 1), from: 'R', to: 'B' },
+          { position: pos(0, 2), from: 'B', to: 'G' },
+        ],
+      };
+      service.initLevel(level);
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.continueDraw(pos(0, 2));
+      service.continueDraw(pos(0, 3));
+      service.endDraw();
+      expect(service.checkWinCondition()).toBe(true);
+    });
+
+    it('activeColor reflects post-transform color during draw and resets on backtrack', () => {
+      const level: Level = {
+        id: 'cc-active',
+        name: 'CCActive',
+        width: 3,
+        height: 1,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(0, 2), color: 'B' },
+        ],
+        portals: [],
+        colorChangers: [{ position: pos(0, 1), from: 'R', to: 'B' }],
+      };
+      service.initLevel(level);
+      service.startDraw(pos(0, 0));
+      expect(service.drawing().activeColor).toBe('R');
+      service.continueDraw(pos(0, 1));
+      expect(service.drawing().activeColor).toBe('B');
+      // Backtrack to (0,0).
+      service.continueDraw(pos(0, 0));
+      expect(service.drawing().activeColor).toBe('R');
+    });
+
+    it('portal partner is a color changer: transformation still applies on arrival', () => {
+      // 1x4 with wall at (0,1). Portal A (0,0) ↔ B (0,2). B cell is a R→B changer.
+      // R @ (0,0) and B @ (0,3). Path: (0,0) → portal → (0,2) [changer] → (0,3).
+      const level: Level = {
+        id: 'cc-portal',
+        name: 'CCPortal',
+        width: 4,
+        height: 1,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(0, 3), color: 'B' },
+        ],
+        portals: [{ id: 'p1', a: pos(0, 0), b: pos(0, 2) }],
+        colorChangers: [{ position: pos(0, 2), from: 'R', to: 'B' }],
+        walls: [pos(0, 1)],
+      };
+      service.initLevel(level);
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 2)); // portal jump
+      expect(service.drawing().activeColor).toBe('B');
+      service.continueDraw(pos(0, 3));
+      service.endDraw();
+      expect(service.checkWinCondition()).toBe(true);
+    });
+
+    it('checkWinFor returns false when some endpoints remain uncovered even if one path is completed', () => {
+      // Two pairs: R (0,0)-(0,2) via R→B changer at (0,1), plus an unused G pair.
+      // Wall at (1,1) to keep 2x3 playable = 5.
+      const level: Level = {
+        id: 'cc-uncovered',
+        name: 'CCUncov',
+        width: 3,
+        height: 2,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(0, 2), color: 'B' },
+          { position: pos(1, 0), color: 'G' },
+          { position: pos(1, 2), color: 'G' },
+        ],
+        portals: [],
+        colorChangers: [{ position: pos(0, 1), from: 'R', to: 'B' }],
+        walls: [pos(1, 1)],
+      };
+      service.initLevel(level);
+      // Only draw the R→B path, leave G endpoints uncovered.
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.continueDraw(pos(0, 2));
+      service.endDraw();
+      expect(service.checkWinCondition()).toBe(false);
+    });
+  });
+
   describe('reset', () => {
     it('clears paths, moves, and history for the current level', () => {
       service.initLevel(makeSimpleLevel());
