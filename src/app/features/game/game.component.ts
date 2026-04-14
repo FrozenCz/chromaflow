@@ -43,18 +43,10 @@ export class GameComponent implements OnInit {
     if (this.engine.level()) {
       return;
     }
-    // Use a time-based seed so each Quick Game session is different but
-    // still reproducible if logged. The loader re-validates the generated
-    // level (full coverage, adjacency, matching endpoints) before returning.
-    const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-    const level = this.loader.generateLevel({
-      id: `quick-${seed.toString(16)}`,
-      name: 'Quick Game',
-      width: 5,
-      height: 5,
-      numColors: 3,
-      seed,
-    });
+    // Delegated to LevelLoaderService.generateQuickGame() which owns the
+    // seed algorithm and Quick Game parameters. The loader re-validates the
+    // generated level (full coverage, adjacency, matching endpoints).
+    const level = this.loader.generateQuickGame();
     this.engine.initLevel(level);
   }
 }

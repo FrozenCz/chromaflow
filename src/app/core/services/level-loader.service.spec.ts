@@ -176,4 +176,16 @@ describe('LevelLoaderService', () => {
       expect(covered.size).toBe(25);
     }
   });
+
+  it('generateQuickGame produces a 5x5 / 3-color level with quick- id prefix', () => {
+    const level = service.generateQuickGame();
+    expect(level.width).toBe(5);
+    expect(level.height).toBe(5);
+    expect(level.name).toBe('Quick Game');
+    expect(level.id.startsWith('quick-')).toBe(true);
+    // 3 colors -> 6 endpoints, par equals number of color paths.
+    expect(level.endpoints).toHaveLength(6);
+    expect(level.par).toBe(3);
+    expect(level.solution).toHaveLength(3);
+  });
 });

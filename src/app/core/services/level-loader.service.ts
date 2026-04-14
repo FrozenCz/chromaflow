@@ -42,6 +42,24 @@ export class LevelLoaderService {
   }
 
   /**
+   * Generate a fresh Quick Game level using a time-based seed so each session
+   * is different but still reproducible if logged. Centralizes the seed/options
+   * used by both the Game screen entry point and the HUD "next level" action,
+   * so there is a single source of truth for Quick Game parameters.
+   */
+  generateQuickGame(): Level {
+    const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+    return this.generateLevel({
+      id: `quick-${seed.toString(16)}`,
+      name: 'Quick Game',
+      width: 5,
+      height: 5,
+      numColors: 3,
+      seed,
+    });
+  }
+
+  /**
    * Load a world by id (cache-first). Returns a shared observable so that
    * concurrent callers reuse the in-flight request and subsequent subscribers
    * receive the cached world without issuing another HTTP request.
