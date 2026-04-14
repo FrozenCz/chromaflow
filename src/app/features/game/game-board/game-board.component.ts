@@ -13,10 +13,11 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { COLOR_PALETTE, PathSolution, Position } from '../../../core/models';
+import { COLOR_PALETTE, FlowColor, PathSolution, Position } from '../../../core/models';
 import { GameEngineService } from '../../../core/services/game-engine.service';
 import {
   GridMetrics,
+  computePathColorSegments,
   createGridMetrics,
   getCanvasSize,
   gridToPixel,
@@ -182,9 +183,65 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
     this.drawGrid(ctx, metrics);
     this.drawWalls(ctx, metrics);
     this.drawPortals(ctx, metrics);
+    this.drawColorChangers(ctx, metrics);
     this.drawPaths(ctx, metrics);
     this.drawEndpoints(ctx, metrics);
     this.drawActiveCell(ctx, metrics);
+  }
+
+  private drawColorChangers(ctx: CanvasRenderingContext2D, metrics: GridMetrics): void {
+    const level = this.engine.level();
+    if (!level || !level.colorChangers || level.colorChangers.length === 0) return;
+    const { cellSize } = metrics;
+    const radius = cellSize * 0.36;
+    const outlineWidth = Math.max(1, cellSize * 0.05);
+
+    for (const changer of level.colorChangers) {
+      const { x, y } = gridToPixel(changer.position, metrics);
+      const fromColor = COLOR_PALETTE[changer.from].main;
+      const toColor = COLOR_PALETTE[changer.to].main;
+
+      // Upper-left half (from) — triangle above the anti-diagonal.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.fillStyle = fromColor;
+      ctx.beginPath();
+      ctx.moveTo(x - radius - 2, y - radius - 2);
+      ctx.lineTo(x + radius + 2, y - radius - 2);
+      ctx.lineTo(x - radius - 2, y + radius + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = toColor;
+      ctx.beginPath();
+      ctx.moveTo(x + radius + 2, y - radius - 2);
+      ctx.lineTo(x + radius + 2, y + radius + 2);
+      ctx.lineTo(x - radius - 2, y + radius + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Diagonal divider line.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.strokeStyle = '#0a0a0a';
+      ctx.lineWidth = outlineWidth;
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y - radius);
+      ctx.lineTo(x - radius, y + radius);
+      ctx.stroke();
+      ctx.restore();
+
+      // Outer ring.
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = outlineWidth;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   private drawPortals(ctx: CanvasRenderingContext2D, metrics: GridMetrics): void {
@@ -284,27 +341,31 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
     metrics: GridMetrics,
   ): void {
     if (solution.path.length === 0) return;
-    const color = COLOR_PALETTE[solution.color].main;
-    ctx.strokeStyle = color;
-    ctx.beginPath();
-    for (let i = 0; i < solution.path.length; i++) {
-      const { x, y } = gridToPixel(solution.path[i], metrics);
-      if (i === 0) {
-        ctx.moveTo(x, y);
-        continue;
-      }
+    const level = this.engine.level();
+    const segments: FlowColor[] = level
+      ? computePathColorSegments(solution.path, level, solution.color)
+      : (solution.path.map(() => solution.color) as FlowColor[]);
+    // `segments[i]` is the active color AFTER passing through cell i.
+    // The color of the edge from path[i-1] to path[i] therefore matches
+    // segments[i] (the post-transform color at the arriving cell).
+    for (let i = 1; i < solution.path.length; i++) {
       const prev = solution.path[i - 1];
       const cur = solution.path[i];
       const gridAdjacent =
         Math.abs(prev.row - cur.row) + Math.abs(prev.col - cur.col) === 1;
-      if (gridAdjacent) {
-        ctx.lineTo(x, y);
-      } else {
-        // Non-adjacent hop (portal teleport) — break the stroke.
-        ctx.moveTo(x, y);
+      if (!gridAdjacent) {
+        // Portal teleport hop — do not render a stroke between these cells.
+        continue;
       }
+      const edgeColor = COLOR_PALETTE[segments[i]].main;
+      const prevPx = gridToPixel(prev, metrics);
+      const curPx = gridToPixel(cur, metrics);
+      ctx.strokeStyle = edgeColor;
+      ctx.beginPath();
+      ctx.moveTo(prevPx.x, prevPx.y);
+      ctx.lineTo(curPx.x, curPx.y);
+      ctx.stroke();
     }
-    ctx.stroke();
   }
 
   private drawEndpoints(ctx: CanvasRenderingContext2D, metrics: GridMetrics): void {
@@ -324,9 +385,8 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
     const active = this.activeCell();
     if (!active) return;
     const drawing = this.engine.drawing();
-    const color = drawing.currentColor
-      ? COLOR_PALETTE[drawing.currentColor].main
-      : '#ffffff';
+    const previewColor = drawing.activeColor ?? drawing.currentColor;
+    const color = previewColor ? COLOR_PALETTE[previewColor].main : '#ffffff';
     ctx.strokeStyle = color;
     ctx.lineWidth = ACTIVE_CELL_LINE_WIDTH;
     ctx.strokeRect(
