@@ -1,4 +1,4 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import {
   DrawingState,
   Endpoint,
@@ -14,6 +14,11 @@ interface EngineState {
   drawing: DrawingState;
   moves: number;
   startedAt: number;
+}
+
+interface HistorySnapshot {
+  paths: PathSolution[];
+  moves: number;
 }
 
 const EMPTY_DRAWING: DrawingState = {
@@ -41,10 +46,24 @@ export class GameEngineService {
     startedAt: Date.now(),
   });
 
+  private readonly history = signal<HistorySnapshot[]>([]);
+  private readonly elapsed = signal<number>(0);
+  private readonly hintPathSignal = signal<PathSolution | null>(null);
+  private timerHandle: ReturnType<typeof setInterval> | null = null;
+
   readonly level = computed(() => this.state().level);
   readonly paths = computed(() => this.state().paths);
   readonly drawing = computed(() => this.state().drawing);
   readonly moveCount = computed(() => this.state().moves);
+  readonly historySize = computed(() => this.history().length);
+  readonly elapsedSeconds = computed(() => this.elapsed());
+  readonly hintPath = computed(() => this.hintPathSignal());
+
+  constructor() {
+    // Stop ticking when the injector is destroyed (e.g. test teardown).
+    const destroyRef = inject(DestroyRef, { optional: true });
+    destroyRef?.onDestroy(() => this.stopTimer());
+  }
 
   readonly fillPercentage = computed(() => {
     const s = this.state();
@@ -79,6 +98,71 @@ export class GameEngineService {
       moves: 0,
       startedAt: Date.now(),
     });
+    this.history.set([]);
+    this.hintPathSignal.set(null);
+    this.elapsed.set(0);
+    this.startTimer();
+  }
+
+  /** Reset current level state (paths, moves, timer, history). No-op if no level. */
+  reset(): void {
+    const level = this.state().level;
+    if (!level) return;
+    this.state.set({
+      level,
+      paths: [],
+      drawing: { ...EMPTY_DRAWING, currentPath: [] },
+      moves: 0,
+      startedAt: Date.now(),
+    });
+    this.history.set([]);
+    this.hintPathSignal.set(null);
+    this.elapsed.set(0);
+    this.startTimer();
+  }
+
+  /** Undo last completed move (restores paths/moveCount from history stack). */
+  undo(): void {
+    const stack = this.history();
+    if (stack.length === 0) return;
+    const snapshot = stack[stack.length - 1];
+    this.history.set(stack.slice(0, -1));
+    const s = this.state();
+    this.state.set({
+      ...s,
+      paths: snapshot.paths.map((p) => ({
+        color: p.color,
+        path: p.path.map(clonePos),
+      })),
+      drawing: { ...EMPTY_DRAWING, currentPath: [] },
+      moves: snapshot.moves,
+    });
+  }
+
+  /**
+   * Reveal one solution path (if level exposes a solution and at least one
+   * color has not been solved yet). No-op otherwise.
+   */
+  hint(): void {
+    const s = this.state();
+    const level = s.level;
+    if (!level || !level.solution || level.solution.length === 0) return;
+
+    const solvedColors = new Set<FlowColor>(
+      s.paths.filter((p) => this.isPathCompleted(level, p)).map((p) => p.color),
+    );
+    const candidate = level.solution.find((seg) => !solvedColors.has(seg.color));
+    if (!candidate) return;
+
+    this.hintPathSignal.set({
+      color: candidate.color,
+      path: candidate.path.map(clonePos),
+    });
+  }
+
+  /** Clear any active hint highlight. */
+  clearHint(): void {
+    this.hintPathSignal.set(null);
   }
 
   startDraw(pos: Position): void {
@@ -189,6 +273,16 @@ export class GameEngineService {
       return;
     }
     const color = drawing.currentColor;
+
+    // Push snapshot of pre-move state onto the history stack for undo.
+    this.history.update((stack) => [
+      ...stack,
+      {
+        paths: s.paths.map((p) => ({ color: p.color, path: p.path.map(clonePos) })),
+        moves: s.moves,
+      },
+    ]);
+
     const newSolution: PathSolution = {
       color,
       path: drawing.currentPath.map(clonePos),
@@ -200,6 +294,10 @@ export class GameEngineService {
       drawing: { ...EMPTY_DRAWING, currentPath: [] },
       moves: s.moves + 1,
     });
+
+    if (this.checkWinFor(level, paths)) {
+      this.stopTimer();
+    }
   }
 
   isAdjacent(a: Position, b: Position): boolean {
@@ -251,7 +349,9 @@ export class GameEngineService {
   }
 
   getElapsedTime(): number {
-    return Math.floor((Date.now() - this.state().startedAt) / 1000);
+    const s = this.state();
+    if (!s.level) return this.elapsed();
+    return Math.floor((Date.now() - s.startedAt) / 1000);
   }
 
   // ---------- helpers ----------
@@ -316,5 +416,25 @@ export class GameEngineService {
   // Exposed for testing / advanced callers
   getStartEndpoint(): Endpoint | null {
     return this.state().drawing.startEndpoint;
+  }
+
+  private startTimer(): void {
+    this.stopTimer();
+    if (typeof setInterval === 'undefined') return;
+    this.timerHandle = setInterval(() => {
+      const s = this.state();
+      if (!s.level) return;
+      this.elapsed.set(Math.floor((Date.now() - s.startedAt) / 1000));
+      if (this.isWon()) {
+        this.stopTimer();
+      }
+    }, 1000);
+  }
+
+  private stopTimer(): void {
+    if (this.timerHandle !== null) {
+      clearInterval(this.timerHandle);
+      this.timerHandle = null;
+    }
   }
 }

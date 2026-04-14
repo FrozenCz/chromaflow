@@ -3,6 +3,7 @@ import { CardModule } from 'primeng/card';
 import { GameEngineService } from '../../core/services/game-engine.service';
 import { LevelLoaderService } from '../../core/services/level-loader.service';
 import { GameBoardComponent } from './game-board/game-board.component';
+import { GameHudComponent } from './game-hud/game-hud.component';
 
 /**
  * Quick Game screen. Always starts the engine on a freshly generated,
@@ -14,13 +15,25 @@ import { GameBoardComponent } from './game-board/game-board.component';
 @Component({
   selector: 'app-game',
   standalone: true,
-  imports: [CardModule, GameBoardComponent],
+  imports: [CardModule, GameBoardComponent, GameHudComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <p-card header="ChromaFlow" subheader="Propoj barevné koncové body">
-      <app-game-board />
+      <div class="game-layout">
+        <app-game-hud />
+        <app-game-board />
+      </div>
     </p-card>
   `,
+  styles: [
+    `
+      .game-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+    `,
+  ],
 })
 export class GameComponent implements OnInit {
   private readonly engine = inject(GameEngineService);
