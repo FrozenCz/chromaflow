@@ -294,4 +294,45 @@ describe('GameEngineService', () => {
       expect(service.getMoveCount()).toBe(1);
     });
   });
+
+  describe('undo', () => {
+    it('is a no-op when history is empty', () => {
+      service.initLevel(makeSimpleLevel());
+      expect(service.historySize()).toBe(0);
+      service.undo();
+      expect(service.getMoveCount()).toBe(0);
+      expect(service.paths()).toEqual([]);
+    });
+
+    it('reverts the last committed move', () => {
+      service.initLevel(makeSimpleLevel());
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.endDraw();
+      expect(service.getMoveCount()).toBe(1);
+      expect(service.paths().length).toBe(1);
+      expect(service.historySize()).toBe(1);
+
+      service.undo();
+      expect(service.getMoveCount()).toBe(0);
+      expect(service.paths()).toEqual([]);
+      expect(service.historySize()).toBe(0);
+    });
+  });
+
+  describe('reset', () => {
+    it('clears paths, moves, and history for the current level', () => {
+      service.initLevel(makeSimpleLevel());
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.endDraw();
+      expect(service.getMoveCount()).toBe(1);
+
+      service.reset();
+      expect(service.level()?.id).toBe('test-simple');
+      expect(service.paths()).toEqual([]);
+      expect(service.getMoveCount()).toBe(0);
+      expect(service.historySize()).toBe(0);
+    });
+  });
 });

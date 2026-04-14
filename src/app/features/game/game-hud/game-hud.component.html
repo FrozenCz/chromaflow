@@ -1,0 +1,110 @@
+<p-toolbar styleClass="game-hud game-hud--top">
+  <ng-template #start>
+    <div class="stats">
+      <div class="stat" [pTooltip]="isMobile() ? 'Čas' : ''" tooltipPosition="bottom">
+        <i class="pi pi-clock" aria-hidden="true"></i>
+        @if (!isMobile()) {
+          <span class="stat-label">Čas</span>
+        }
+        <span class="stat-value">{{ timeLabel() }}</span>
+      </div>
+      <div class="stat" [pTooltip]="isMobile() ? 'Tahy' : ''" tooltipPosition="bottom">
+        <i class="pi pi-bars" aria-hidden="true"></i>
+        @if (!isMobile()) {
+          <span class="stat-label">Tahy</span>
+        }
+        <span class="stat-value">{{ moves() }}</span>
+      </div>
+      <div class="stat" [pTooltip]="isMobile() ? 'Vyplněno' : ''" tooltipPosition="bottom">
+        <i class="pi pi-percentage" aria-hidden="true"></i>
+        @if (!isMobile()) {
+          <span class="stat-label">Vyplněno</span>
+        }
+        <span class="stat-value">{{ fill() }}%</span>
+      </div>
+    </div>
+  </ng-template>
+</p-toolbar>
+
+<p-toolbar styleClass="game-hud game-hud--bottom">
+  <ng-template #center>
+    <div class="actions">
+      <p-button
+        icon="pi pi-refresh"
+        severity="secondary"
+        [label]="isMobile() ? '' : 'Reset'"
+        [pTooltip]="isMobile() ? 'Reset' : ''"
+        tooltipPosition="top"
+        (onClick)="onReset()"
+        aria-label="Reset"
+      />
+      <p-button
+        icon="pi pi-undo"
+        [label]="isMobile() ? '' : 'Zpět'"
+        [disabled]="undoDisabled()"
+        [pTooltip]="isMobile() ? 'Zpět' : ''"
+        tooltipPosition="top"
+        (onClick)="onUndo()"
+        aria-label="Zpět"
+      />
+      @if (hasSolution()) {
+        <p-button
+          icon="pi pi-lightbulb"
+          severity="help"
+          [label]="isMobile() ? '' : 'Nápověda'"
+          [disabled]="hintCooldown()"
+          [pTooltip]="isMobile() ? 'Nápověda' : ''"
+          tooltipPosition="top"
+          (onClick)="onHint()"
+          aria-label="Nápověda"
+        />
+      }
+    </div>
+  </ng-template>
+</p-toolbar>
+
+<p-dialog
+  [visible]="winDialogVisible()"
+  [modal]="true"
+  [closable]="false"
+  [draggable]="false"
+  [resizable]="false"
+  [style]="{ width: '22rem' }"
+  header="Level dokončen!"
+  styleClass="win-dialog"
+>
+  <div class="win-content">
+    <div class="stars" aria-label="Hodnocení hvězdičkami">
+      @for (filled of starArray(); track $index) {
+        <i
+          class="pi"
+          [class.pi-star-fill]="filled"
+          [class.pi-star]="!filled"
+          aria-hidden="true"
+        ></i>
+      }
+    </div>
+    <div class="win-stats">
+      <div class="win-stat">
+        <span class="win-stat-label">Tahy</span>
+        <span class="win-stat-value">{{ moves() }}/{{ parLabel() }}</span>
+      </div>
+      <div class="win-stat">
+        <span class="win-stat-label">Čas</span>
+        <span class="win-stat-value">{{ timeLabel() }}</span>
+      </div>
+    </div>
+  </div>
+  <ng-template #footer>
+    <div class="win-actions">
+      <p-button
+        icon="pi pi-refresh"
+        label="Znovu"
+        severity="secondary"
+        (onClick)="onReplay()"
+      />
+      <p-button icon="pi pi-home" label="Menu" severity="secondary" (onClick)="onMenu()" />
+      <p-button icon="pi pi-arrow-right" label="Další level" (onClick)="onNextLevel()" />
+    </div>
+  </ng-template>
+</p-dialog>
