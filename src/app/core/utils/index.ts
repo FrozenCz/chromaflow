@@ -7,3 +7,4 @@ export {
   pixelToGrid,
 } from './grid';
 export type { GridMetrics, PixelCoord } from './grid';
+export { PORTAL_COLORS, portalColorFor } from './portal-colors';

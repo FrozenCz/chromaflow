@@ -20,6 +20,7 @@ import {
   createGridMetrics,
   getCanvasSize,
   gridToPixel,
+  portalColorFor,
 } from '../../../core/utils';
 import { PointerController } from './pointer-controller';
 
@@ -180,9 +181,35 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
 
     this.drawGrid(ctx, metrics);
     this.drawWalls(ctx, metrics);
+    this.drawPortals(ctx, metrics);
     this.drawPaths(ctx, metrics);
     this.drawEndpoints(ctx, metrics);
     this.drawActiveCell(ctx, metrics);
+  }
+
+  private drawPortals(ctx: CanvasRenderingContext2D, metrics: GridMetrics): void {
+    const level = this.engine.level();
+    if (!level || !level.portals || level.portals.length === 0) return;
+    const { cellSize } = metrics;
+    const outerRadius = cellSize * 0.38;
+    const innerRadius = cellSize * 0.22;
+    const lineWidth = cellSize * 0.08;
+
+    for (const pair of level.portals) {
+      const color = portalColorFor(pair.id);
+      for (const endpoint of [pair.a, pair.b]) {
+        const { x, y } = gridToPixel(endpoint, metrics);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 
   private drawGrid(ctx: CanvasRenderingContext2D, metrics: GridMetrics): void {
@@ -264,8 +291,17 @@ export class GameBoardComponent implements AfterViewInit, OnDestroy {
       const { x, y } = gridToPixel(solution.path[i], metrics);
       if (i === 0) {
         ctx.moveTo(x, y);
-      } else {
+        continue;
+      }
+      const prev = solution.path[i - 1];
+      const cur = solution.path[i];
+      const gridAdjacent =
+        Math.abs(prev.row - cur.row) + Math.abs(prev.col - cur.col) === 1;
+      if (gridAdjacent) {
         ctx.lineTo(x, y);
+      } else {
+        // Non-adjacent hop (portal teleport) — break the stroke.
+        ctx.moveTo(x, y);
       }
     }
     ctx.stroke();

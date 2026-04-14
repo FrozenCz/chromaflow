@@ -13,6 +13,12 @@ export const DEMO_LEVEL: Level = {
     { position: { row: 2, col: 2 }, color: 'G' },
     { position: { row: 2, col: 0 }, color: 'G' },
   ],
-  portals: [],
+  portals: [
+    {
+      id: 'demo-portal-1',
+      a: { row: 1, col: 2 },
+      b: { row: 3, col: 2 },
+    },
+  ],
   colorChangers: [],
 };

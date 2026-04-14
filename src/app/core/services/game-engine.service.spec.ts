@@ -391,6 +391,178 @@ describe('GameEngineService', () => {
     });
   });
 
+  describe('portals', () => {
+    function makePortalLevel(): Level {
+      // 5x5 with R endpoints and a portal pair (0,2) <-> (4,2).
+      return {
+        id: 'portal-basic',
+        name: 'PortalBasic',
+        width: 5,
+        height: 5,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(4, 4), color: 'R' },
+        ],
+        portals: [{ id: 'p1', a: pos(0, 2), b: pos(4, 2) }],
+        colorChangers: [],
+      };
+    }
+
+    it('checkPortalAdjacency returns the partner for A and B', () => {
+      const level = makePortalLevel();
+      service.initLevel(level);
+      expect(service.checkPortalAdjacency(pos(0, 2))).toEqual(pos(4, 2));
+      expect(service.checkPortalAdjacency(pos(4, 2))).toEqual(pos(0, 2));
+    });
+
+    it('checkPortalAdjacency returns null for non-portal cell', () => {
+      service.initLevel(makePortalLevel());
+      expect(service.checkPortalAdjacency(pos(1, 1))).toBeNull();
+    });
+
+    it('checkPortalAdjacency returns null when level has no portals', () => {
+      service.initLevel(makeSimpleLevel());
+      expect(service.checkPortalAdjacency(pos(0, 0))).toBeNull();
+    });
+
+    it('checkPortalAdjacency result is a deep clone (mutation safe)', () => {
+      const level = makePortalLevel();
+      service.initLevel(level);
+      const partner = service.checkPortalAdjacency(pos(0, 2));
+      expect(partner).not.toBeNull();
+      if (partner) {
+        partner.row = 99;
+        partner.col = 99;
+      }
+      expect(level.portals[0].b).toEqual(pos(4, 2));
+      expect(service.checkPortalAdjacency(pos(0, 2))).toEqual(pos(4, 2));
+    });
+
+    it('isValidMove allows a portal jump A -> B', () => {
+      service.initLevel(makePortalLevel());
+      expect(service.isValidMove(pos(0, 2), pos(4, 2), 'R')).toBe(true);
+    });
+
+    it('isValidMove rejects a non-adjacent non-portal target', () => {
+      service.initLevel(makePortalLevel());
+      expect(service.isValidMove(pos(0, 2), pos(2, 3), 'R')).toBe(false);
+    });
+
+    it('isValidMove rejects a portal whose partner is a wall', () => {
+      const level: Level = {
+        ...makePortalLevel(),
+        walls: [pos(4, 2)],
+      };
+      service.initLevel(level);
+      expect(service.isValidMove(pos(0, 2), pos(4, 2), 'R')).toBe(false);
+    });
+
+    it('isValidMove rejects a portal whose partner is a foreign-color endpoint', () => {
+      const level: Level = {
+        id: 'portal-foreign',
+        name: 'PortalForeign',
+        width: 5,
+        height: 5,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(4, 4), color: 'R' },
+          { position: pos(4, 2), color: 'B' },
+          { position: pos(0, 4), color: 'B' },
+        ],
+        portals: [{ id: 'p1', a: pos(0, 2), b: pos(4, 2) }],
+        colorChangers: [],
+      };
+      service.initLevel(level);
+      expect(service.isValidMove(pos(0, 2), pos(4, 2), 'R')).toBe(false);
+    });
+
+    it('continueDraw auto-teleports when dragging past portal A to a cell adjacent to B', () => {
+      service.initLevel(makePortalLevel());
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.continueDraw(pos(0, 2)); // portal A
+      // Drag to (4,1) which is adjacent to portal B (4,2) but not to A.
+      service.continueDraw(pos(4, 1));
+      const path = service.drawing().currentPath;
+      // Expect [(0,0),(0,1),(0,2),(4,2),(4,1)] — B injected between A and target.
+      expect(path).toEqual([pos(0, 0), pos(0, 1), pos(0, 2), pos(4, 2), pos(4, 1)]);
+    });
+
+    it('continueDraw continues normally past portal B after teleport', () => {
+      service.initLevel(makePortalLevel());
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.continueDraw(pos(0, 2));
+      service.continueDraw(pos(4, 1));
+      service.continueDraw(pos(4, 0));
+      const path = service.drawing().currentPath;
+      expect(path[path.length - 1]).toEqual(pos(4, 0));
+      expect(path).toContainEqual(pos(4, 2));
+    });
+
+    it('backtracking from B removes B from the current path', () => {
+      service.initLevel(makePortalLevel());
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.continueDraw(pos(0, 2));
+      service.continueDraw(pos(4, 1)); // teleports, path ends at (4,1)
+      expect(service.drawing().currentPath).toEqual([
+        pos(0, 0),
+        pos(0, 1),
+        pos(0, 2),
+        pos(4, 2),
+        pos(4, 1),
+      ]);
+      // Step back to (4,2)
+      service.continueDraw(pos(4, 2));
+      expect(service.drawing().currentPath).toEqual([
+        pos(0, 0),
+        pos(0, 1),
+        pos(0, 2),
+        pos(4, 2),
+      ]);
+    });
+
+    it('revisit prevention: teleport does not inject a partner already in path', () => {
+      service.initLevel(makePortalLevel());
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(0, 1));
+      service.continueDraw(pos(0, 2)); // portal A
+      service.continueDraw(pos(4, 1)); // teleports, B injected
+      // Now drag to (3,2) — last is (4,1), (3,2) isn't adjacent to (4,1),
+      // and (4,1) isn't a portal, so no teleport should inject (4,2) again.
+      service.continueDraw(pos(3, 2));
+      const path = service.drawing().currentPath;
+      // Last should still be (4,1) — the invalid move was rejected.
+      expect(path[path.length - 1]).toEqual(pos(4, 1));
+    });
+
+    it('win: completing a path via portal counts as a valid solution', () => {
+      // 1x3 level: R at (0,0) and (0,2), portal connects (0,0) and (0,2)...
+      // need full fill, so use 1x2 connected via portal is degenerate.
+      // Use a 3x1 level where col 1 is a wall and portal connects (0,0)-(2,0).
+      const level: Level = {
+        id: 'portal-win',
+        name: 'PortalWin',
+        width: 1,
+        height: 3,
+        endpoints: [
+          { position: pos(0, 0), color: 'R' },
+          { position: pos(2, 0), color: 'R' },
+        ],
+        portals: [{ id: 'p1', a: pos(0, 0), b: pos(2, 0) }],
+        colorChangers: [],
+        walls: [pos(1, 0)],
+      };
+      service.initLevel(level);
+      // Playable cells = 2: (0,0) and (2,0). Drag from (0,0) through portal to (2,0).
+      service.startDraw(pos(0, 0));
+      service.continueDraw(pos(2, 0));
+      service.endDraw();
+      expect(service.checkWinCondition()).toBe(true);
+    });
+  });
+
   describe('reset', () => {
     it('clears paths, moves, and history for the current level', () => {
       service.initLevel(makeSimpleLevel());
