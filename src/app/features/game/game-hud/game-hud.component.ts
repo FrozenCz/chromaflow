@@ -142,15 +142,7 @@ export class GameHudComponent {
     // Generate a fresh Quick Game level — campaign progression is handled
     // elsewhere. This keeps the HUD self-contained without coupling to world data.
     try {
-      const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
-      const level = this.loader.generateLevel({
-        id: `quick-${seed.toString(16)}`,
-        name: 'Quick Game',
-        width: 5,
-        height: 5,
-        numColors: 3,
-        seed,
-      });
+      const level = this.loader.generateQuickGame();
       this.engine.initLevel(level);
     } catch {
       // Fallback: at least reset the current level so the dialog closes cleanly.
