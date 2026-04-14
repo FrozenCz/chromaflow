@@ -14,6 +14,7 @@ import { ToolbarModule } from 'primeng/toolbar';
 import { TooltipModule } from 'primeng/tooltip';
 import { GameEngineService } from '../../../core/services/game-engine.service';
 import { LevelLoaderService } from '../../../core/services/level-loader.service';
+import { LegendDialogComponent } from '../legend-dialog/legend-dialog.component';
 
 const HINT_COOLDOWN_MS = 3000;
 const MOBILE_BREAKPOINT_PX = 768;
@@ -26,7 +27,7 @@ const MOBILE_BREAKPOINT_PX = 768;
 @Component({
   selector: 'app-game-hud',
   standalone: true,
-  imports: [ToolbarModule, ButtonModule, DialogModule, TooltipModule],
+  imports: [ToolbarModule, ButtonModule, DialogModule, TooltipModule, LegendDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './game-hud.component.html',
   styleUrl: './game-hud.component.scss',
@@ -38,6 +39,7 @@ export class GameHudComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly winDialogVisible = signal(false);
+  protected readonly legendDialogVisible = signal(false);
   protected readonly hintCooldown = signal(false);
   protected readonly isMobile = signal(
     typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT_PX : false,
@@ -107,6 +109,10 @@ export class GameHudComponent {
         this.resizeListener = null;
       }
     });
+  }
+
+  protected onOpenLegend(): void {
+    this.legendDialogVisible.set(true);
   }
 
   protected onReset(): void {
