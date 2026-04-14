@@ -238,7 +238,37 @@ export class GameEngineService {
     // Can't revisit own path
     if (path.some((p) => samePos(p, pos))) return;
 
-    if (!this.isValidMove(last, pos, drawing.currentColor)) return;
+    // Portal auto-teleport: if `last` sits on a portal and `pos` is not
+    // adjacent to `last` but IS adjacent to the partner endpoint, inject the
+    // partner into the current path first, then continue with `pos`. We
+    // prefer plain adjacency over portal jumps when both would apply.
+    let workingPath = path;
+    let workingLast = last;
+    if (!this.isAdjacent(last, pos)) {
+      const partner = this.checkPortalAdjacency(last, level);
+      if (
+        partner &&
+        !samePos(partner, pos) &&
+        this.isAdjacent(partner, pos) &&
+        !this.isWall(level, partner) &&
+        !path.some((p) => samePos(p, partner))
+      ) {
+        // Partner cell must not be a foreign-color endpoint.
+        const partnerEndpoint = level.endpoints.find((e) =>
+          samePos(e.position, partner),
+        );
+        if (partnerEndpoint && partnerEndpoint.color !== drawing.currentColor) {
+          return;
+        }
+        // Revisit prevention: current path must not already contain another
+        // portal endpoint that would cause re-entry into the same portal.
+        const nextPath = [...path, clonePos(partner)];
+        workingPath = nextPath;
+        workingLast = partner;
+      }
+    }
+
+    if (!this.isValidMove(workingLast, pos, drawing.currentColor)) return;
 
     // Split: if pos belongs to another color's path, trim that path
     let newPaths = s.paths;
@@ -255,7 +285,7 @@ export class GameEngineService {
       );
     }
 
-    const newPath = [...path, clonePos(pos)];
+    const newPath = [...workingPath, clonePos(pos)];
     this.state.set({
       ...s,
       paths: newPaths,
@@ -304,11 +334,33 @@ export class GameEngineService {
     return Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
   }
 
+  /**
+   * If `pos` is one of the endpoints of a portal pair in the given level,
+   * return a deep clone of the partner endpoint position. Otherwise return
+   * null. Pure — does not mutate the level.
+   */
+  checkPortalAdjacency(pos: Position, level?: Level): Position | null {
+    const lvl = level ?? this.state().level;
+    if (!lvl) return null;
+    const portals = lvl.portals ?? [];
+    for (const pair of portals) {
+      if (samePos(pair.a, pos)) return clonePos(pair.b);
+      if (samePos(pair.b, pos)) return clonePos(pair.a);
+    }
+    return null;
+  }
+
+  private isPortalJump(from: Position, to: Position, level: Level): boolean {
+    const partner = this.checkPortalAdjacency(from, level);
+    if (!partner) return false;
+    return samePos(partner, to);
+  }
+
   isValidMove(from: Position, to: Position, color: FlowColor): boolean {
     const level = this.state().level;
     if (!level) return false;
     if (!this.inBounds(level, to)) return false;
-    if (!this.isAdjacent(from, to)) return false;
+    if (!this.isAdjacent(from, to) && !this.isPortalJump(from, to, level)) return false;
     if (this.isWall(level, to)) return false;
 
     // Endpoint of another color is not allowed
