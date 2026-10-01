@@ -24,6 +24,18 @@
       </div>
     </div>
   </ng-template>
+  <ng-template #end>
+    <p-button
+      icon="pi pi-question-circle"
+      severity="secondary"
+      [rounded]="true"
+      [text]="true"
+      aria-label="Legenda modifikátorů"
+      pTooltip="Legenda"
+      tooltipPosition="bottom"
+      (onClick)="onOpenLegend()"
+    />
+  </ng-template>
 </p-toolbar>
 
 <p-toolbar styleClass="game-hud game-hud--bottom">
@@ -108,3 +120,8 @@
     </div>
   </ng-template>
 </p-dialog>
+
+<app-legend-dialog
+  [visible]="legendDialogVisible()"
+  (visibleChange)="legendDialogVisible.set($event)"
+/>

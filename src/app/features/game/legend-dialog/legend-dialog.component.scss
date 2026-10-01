@@ -1,0 +1,50 @@
+@layer app-styles {
+  :host ::ng-deep .legend-dialog .p-dialog-content {
+    background: var(--p-surface-900);
+    color: var(--p-text-color);
+  }
+
+  .legend-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.25rem 0;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: var(--p-surface-700);
+    border-radius: var(--p-border-radius-md);
+  }
+
+  .legend-canvas {
+    width: 56px;
+    height: 56px;
+    flex: 0 0 56px;
+    border-radius: var(--p-border-radius-md);
+  }
+
+  .legend-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
+  .legend-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--p-text-color);
+  }
+
+  .legend-desc {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--p-text-muted-color);
+  }
+}

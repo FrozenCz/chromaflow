@@ -1,0 +1,65 @@
+<p-dialog
+  header="Legenda modifikátorů"
+  [visible]="visible()"
+  (visibleChange)="onVisibleChange($event)"
+  (onShow)="onShow()"
+  [modal]="true"
+  [closable]="true"
+  [dismissableMask]="true"
+  [closeOnEscape]="true"
+  [draggable]="false"
+  [resizable]="false"
+  [style]="{ width: '32rem' }"
+  styleClass="legend-dialog"
+>
+  <div class="legend-body">
+    <div class="legend-item">
+      <canvas
+        #wallCanvas
+        class="legend-canvas"
+        role="img"
+        aria-label="Ukázka zdi — neprostupná buňka"
+      ></canvas>
+      <div class="legend-text">
+        <h3 class="legend-title">Zdi</h3>
+        <p class="legend-desc">Buňky, přes které nelze vést cestu. Musíš je obejít.</p>
+      </div>
+    </div>
+
+    <div class="legend-item">
+      <canvas
+        #portalCanvas
+        class="legend-canvas"
+        role="img"
+        aria-label="Ukázka portálu — dvojice propojených bodů"
+      ></canvas>
+      <div class="legend-text">
+        <h3 class="legend-title">Portály</h3>
+        <p class="legend-desc">
+          Dvojice propojených bodů. Když cesta vstoupí do jednoho portálu, vystoupí z druhého —
+          barva zůstává.
+        </p>
+      </div>
+    </div>
+
+    <div class="legend-item">
+      <canvas
+        #changerCanvas
+        class="legend-canvas"
+        role="img"
+        aria-label="Ukázka měniče barev — dlaždice rozdělená na dvě barvy"
+      ></canvas>
+      <div class="legend-text">
+        <h3 class="legend-title">Měniče barev</h3>
+        <p class="legend-desc">
+          Při průchodu touto dlaždicí se barva cesty změní (např. z červené na modrou). Cílový
+          endpoint musí odpovídat výsledné barvě.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <ng-template #footer>
+    <p-button label="Rozumím" icon="pi pi-check" (onClick)="onClose()" />
+  </ng-template>
+</p-dialog>
